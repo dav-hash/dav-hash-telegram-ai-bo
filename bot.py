@@ -15,26 +15,24 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 def analyze_with_gemini(news_text):
-    """Analyze crypto news with Gemini"""
-    
-    prompt = (
-        f"وەک پسپۆڕێکی بازاڕی دراوە ئەلیکترۆنییەکان، ئەم هەواڵە بخوێنەرەوە: '{news_text}'\n"
-        "١. کاریگەرییەکەی چییە؟ (ئەرێنی، نەرێنی، یان بێلایەن)\n"
-        "٢. ئایا کاتی کڕینە یان فرۆشتن؟\n"
-        "٣. بە کوردییەکی زۆر کورت و پوخت وەڵام بدەرەوە."
-    )
-
     try:
-        # لێرەدا گۆڕانکاری کراوە لە شێوازی بانگکردنەکە
+        # لێرەدا ناوی مۆدێلەکەمان گۆڕیوە بۆ شێوازە فەرمییەکە
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt
+            model="gemini-1.5-flash", 
+            contents=f"وەک پسپۆڕێکی کریپتۆ ئەم هەواڵە بە کوردی شیکار بکە: {news_text}"
         )
-        # پێویستە دەستبگریت بەسەر تێکستەکەدا بەم شێوەیە
         return response.text
     except Exception as e:
-        print(f"Gemini Error: {e}")
-        return "⚠️ ببورە، ناتوانم لە ئێستادا ئەم هەواڵە شیکار بکەم."
+        # ئەگەر دووبارە 404 بوو، ئەمە تاقی بکەرەوە
+        try:
+            response = client.models.generate_content(
+                model="models/gemini-1.5-flash", # لێرە models/ مان بۆ زیاد کرد
+                contents=f"وەک پسپۆڕێکی کریپتۆ ئەم هەواڵە بە کوردی شیکار بکە: {news_text}"
+            )
+            return response.text
+        except Exception as e2:
+            print(f"Gemini Error: {e2}")
+            return "⚠️ مۆدێلەکە لەسەر سێرڤەر نەدۆزرایەوە."
 
 def get_news():
     """Get crypto news"""
