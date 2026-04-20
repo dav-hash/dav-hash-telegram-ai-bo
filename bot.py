@@ -2,6 +2,7 @@ import telebot
 import requests
 import time
 from google import genai
+from google.genai import types
 
 # --- TOKEN & API KEYS ---
 TELEGRAM_TOKEN = "8667282272:AAGx9qoKDCr-2j6JTHW0oRhXXO8_OfBSzas"
@@ -15,39 +16,50 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 def analyze_with_gemini(news_text):
+    """Analyze crypto news with Gemini"""
+    prompt = (
+        f"وەک پسپۆڕێکی بازاڕی دراوە ئەلیکترۆنییەکان، ئەم هەواڵە بخوێنەرەوە: '{news_text}'\n"
+        "١. کاریگەرییەکەی چییە؟ (ئەرێنی، نەرێنی، یان بێلایەن)\n"
+        "٢. ئایا کاتی کڕینە یان فرۆشتن؟\n"
+        "٣. بە کوردییەکی زۆر کورت و پوخت وەڵام بدەرەوە. تەنها تێکستی سادە بەکاربهێنە بەبێ هێمای ئەستێرە یان مارکداون."
+    )
+
     try:
-        # لێرەدا ناوی مۆدێلەکەمان گۆڕیوە بۆ شێوازە فەرمییەکە
+        # چارەسەری هەڵەی 404 بە بەکارهێنانی ناوی دروستی مۆدێل
         response = client.models.generate_content(
-            model="gemini-1.5-flash", 
-            contents=f"وەک پسپۆڕێکی کریپتۆ ئەم هەواڵە بە کوردی شیکار بکە: {news_text}"
-        )
-        return response.text
-    except Exception as e:
-        # ئەگەر دووبارە 404 بوو، ئەمە تاقی بکەرەوە
-        try:
-            response = client.models.generate_content(
-                model="models/gemini-1.5-flash", # لێرە models/ مان بۆ زیاد کرد
-                contents=f"وەک پسپۆڕێکی کریپتۆ ئەم هەواڵە بە کوردی شیکار بکە: {news_text}"
+            model="gemini-1.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=300,
+                temperature=0.7
             )
-            return response.text
-        except Exception as e2:
-            print(f"Gemini Error: {e2}")
-            return "⚠️ مۆدێلەکە لەسەر سێرڤەر نەدۆزرایەوە."
+        )
+        
+        if response and response.text:
+            # پاککردنەوەی دەقەکە لە هەر هێمایەکی مارکداون کە تێلیگرام تێک دەدات
+            return response.text.replace("*", "").replace("_", "").replace("`", "")
+        else:
+            return "🤖 Gemini وەڵامێکی بەردەستی نەبوو."
+
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return "⚠️ شیکردنەوە بۆ ئەم هەواڵە بەردەست نییە."
 
 def get_news():
     """Get crypto news"""
     url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q=crypto&language=en"
     try:
-        response = requests.get(url).json()
+        response = requests.get(url, timeout=10).json()
         return response.get("results", [])
-    except:
+    except Exception as e:
+        print(f"News API Error: {e}")
         return []
 
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(
         message,
-        "🚀 بۆتە زیرەکە چالاک بوو!\nهەواڵی کریپتۆ دەهێنرێت و Gemini شیکاری بۆ دەکات."
+        "🚀 بۆتە زیرەکە چالاک بوو!\nهەواڵە نوێیەکانی کریپتۆ لێرە بڵاو دەکرێنەوە."
     )
 
     already_sent = set()
@@ -55,36 +67,43 @@ def start(message):
     while True:
         try:
             news_list = get_news()
+
             for news in news_list:
                 title = news.get("title")
                 link = news.get("link")
 
                 if title and title not in already_sent:
+                    # ئەنجامدانی شیکاری
                     analysis = analyze_with_gemini(title)
 
+                    # دروستکردنی پەیامەکە بە تێکستێکی سادە
                     final_msg = (
-                        f"📰 **هەواڵ:** {title}\n\n"
-                        f"🔗 {link}\n"
+                        f"📰 هەواڵ: {title}\n\n"
+                        f"🔗 لینکی هەواڵ: {link}\n"
                         f"-----------------\n"
-                        f"🤖 **شیکاری AI:**\n{analysis}"
+                        f"🤖 شیکاری زیرەک:\n{analysis}"
                     )
 
-                    bot.send_message(
-                        message.chat.id,
-                        final_msg,
-                        parse_mode="Markdown"
-                    )
+                    # ناردنی پەیامەکە بەبێ parse_mode بۆ ئەوەی تووشی Crash نەبێت
+                    bot.send_message(message.chat.id, final_msg)
 
                     already_sent.add(title)
 
-                    # پاراستنی میمۆری
-                    if len(already_sent) > 100:
-                        already_sent.clear() 
+                    # پاراستنی میمۆری (ئەگەر لیستەکە زۆر بوو پاکی بکەرەوە)
+                    if len(already_sent) > 50:
+                        already_sent.clear()
 
-            time.sleep(300) # هەموو ٥ خولەک جارێک پشکنین دەکات
+                    # کەمێک وەستان لە نێوان پەیامەکان
+                    time.sleep(5)
+
+            # پشکنین هەموو ٥ خولەک جارێک
+            time.sleep(300)
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Main Loop Error: {e}")
             time.sleep(60)
 
-bot.polling(none_stop=True)
+# دەستپێکردنی بۆتەکە
+if __name__ == "__main__":
+    print("Bot is running...")
+    bot.polling(none_stop=True)
