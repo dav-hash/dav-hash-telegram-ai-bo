@@ -14,7 +14,6 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # Telegram bot setup
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-
 def analyze_with_gemini(news_text):
     """Analyze crypto news with Gemini"""
     
@@ -26,31 +25,28 @@ def analyze_with_gemini(news_text):
     )
 
     try:
+        # لێرەدا گۆڕانکاری کراوە لە شێوازی بانگکردنەکە
         response = client.models.generate_content(
             model="gemini-1.5-flash",
             contents=prompt
         )
+        # پێویستە دەستبگریت بەسەر تێکستەکەدا بەم شێوەیە
         return response.text
     except Exception as e:
         print(f"Gemini Error: {e}")
-        return "⚠️ هەڵەیەک لە شیکردنەوەی Gemini ڕوویدا."
-
+        return "⚠️ ببورە، ناتوانم لە ئێستادا ئەم هەواڵە شیکار بکەم."
 
 def get_news():
     """Get crypto news"""
-    
     url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q=crypto&language=en"
-
     try:
         response = requests.get(url).json()
         return response.get("results", [])
     except:
         return []
 
-
 @bot.message_handler(commands=['start'])
 def start(message):
-
     bot.reply_to(
         message,
         "🚀 بۆتە زیرەکە چالاک بوو!\nهەواڵی کریپتۆ دەهێنرێت و Gemini شیکاری بۆ دەکات."
@@ -60,20 +56,16 @@ def start(message):
 
     while True:
         try:
-
             news_list = get_news()
-
             for news in news_list:
-
                 title = news.get("title")
                 link = news.get("link")
 
-                if title not in already_sent:
-
+                if title and title not in already_sent:
                     analysis = analyze_with_gemini(title)
 
                     final_msg = (
-                        f"📰 **هەواڵ:** {title}\n"
+                        f"📰 **هەواڵ:** {title}\n\n"
                         f"🔗 {link}\n"
                         f"-----------------\n"
                         f"🤖 **شیکاری AI:**\n{analysis}"
@@ -87,14 +79,14 @@ def start(message):
 
                     already_sent.add(title)
 
+                    # پاراستنی میمۆری
                     if len(already_sent) > 100:
-                        already_sent.pop()
+                        already_sent.clear() 
 
-            time.sleep(300)
+            time.sleep(300) # هەموو ٥ خولەک جارێک پشکنین دەکات
 
         except Exception as e:
             print(f"Error: {e}")
             time.sleep(60)
 
-
-bot.polling()
+bot.polling(none_stop=True)
