@@ -1,0 +1,100 @@
+import telebot
+import requests
+import time
+from google import genai
+
+# --- TOKEN & API KEYS ---
+TELEGRAM_TOKEN = "8667282272:AAGx9qoKDCr-2j6JTHW0oRhXXO8_OfBSzas"
+GEMINI_API_KEY = "AIzaSyBrOEyTbWQhu5hQKaNNadsW2l0QdmMSHqA"
+NEWSDATA_API_KEY = "pub_5171f9c689bb4542880d74e0a73d1bee"
+
+# Gemini setup
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Telegram bot setup
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+
+def analyze_with_gemini(news_text):
+    """Analyze crypto news with Gemini"""
+    
+    prompt = (
+        f"وەک پسپۆڕێکی بازاڕی دراوە ئەلیکترۆنییەکان، ئەم هەواڵە بخوێنەرەوە: '{news_text}'\n"
+        "١. کاریگەرییەکەی چییە؟ (ئەرێنی، نەرێنی، یان بێلایەن)\n"
+        "٢. ئایا کاتی کڕینە یان فرۆشتن؟\n"
+        "٣. بە کوردییەکی زۆر کورت و پوخت وەڵام بدەرەوە."
+    )
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return "⚠️ هەڵەیەک لە شیکردنەوەی Gemini ڕوویدا."
+
+
+def get_news():
+    """Get crypto news"""
+    
+    url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q=crypto&language=en"
+
+    try:
+        response = requests.get(url).json()
+        return response.get("results", [])
+    except:
+        return []
+
+
+@bot.message_handler(commands=['start'])
+def start(message):
+
+    bot.reply_to(
+        message,
+        "🚀 بۆتە زیرەکە چالاک بوو!\nهەواڵی کریپتۆ دەهێنرێت و Gemini شیکاری بۆ دەکات."
+    )
+
+    already_sent = set()
+
+    while True:
+        try:
+
+            news_list = get_news()
+
+            for news in news_list:
+
+                title = news.get("title")
+                link = news.get("link")
+
+                if title not in already_sent:
+
+                    analysis = analyze_with_gemini(title)
+
+                    final_msg = (
+                        f"📰 **هەواڵ:** {title}\n"
+                        f"🔗 {link}\n"
+                        f"-----------------\n"
+                        f"🤖 **شیکاری AI:**\n{analysis}"
+                    )
+
+                    bot.send_message(
+                        message.chat.id,
+                        final_msg,
+                        parse_mode="Markdown"
+                    )
+
+                    already_sent.add(title)
+
+                    if len(already_sent) > 100:
+                        already_sent.pop()
+
+            time.sleep(300)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(60)
+
+
+bot.polling()
