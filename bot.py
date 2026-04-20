@@ -5,48 +5,45 @@ from google import genai
 from google.genai import types
 
 # --- TOKEN & API KEYS ---
+# تێبینی: باشترە ئەمانە لە ناو Environment Variables ی Railway دابنێیت
 TELEGRAM_TOKEN = "8667282272:AAGx9qoKDCr-2j6JTHW0oRhXXO8_OfBSzas"
 GEMINI_API_KEY = "AIzaSyBrOEyTbWQhu5hQKaNNadsW2l0QdmMSHqA"
 NEWSDATA_API_KEY = "pub_5171f9c689bb4542880d74e0a73d1bee"
 
-# Gemini setup
+# ڕێکخستنی Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Telegram bot setup
+# ڕێکخستنی بۆتی تێلیگرام
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 def analyze_with_gemini(news_text):
-    """Analyze crypto news with Gemini"""
+    """شیکارکردنی هەواڵەکە بە Gemini"""
     prompt = (
         f"وەک پسپۆڕێکی بازاڕی دراوە ئەلیکترۆنییەکان، ئەم هەواڵە بخوێنەرەوە: '{news_text}'\n"
         "١. کاریگەرییەکەی چییە؟ (ئەرێنی، نەرێنی، یان بێلایەن)\n"
         "٢. ئایا کاتی کڕینە یان فرۆشتن؟\n"
-        "٣. بە کوردییەکی زۆر کورت و پوخت وەڵام بدەرەوە. تەنها تێکستی سادە بەکاربهێنە بەبێ هێمای ئەستێرە یان مارکداون."
+        "٣. بە کوردییەکی زۆر کورت و پوخت وەڵام بدەرەوە. تەنها دەقی سادە بنووسە."
     )
 
     try:
-        # چارەسەری هەڵەی 404 بە بەکارهێنانی ناوی دروستی مۆدێل
+        # لێرەدا کێشەی 404 چارەسەر کراوە بە دیاریکردنی ناوی ڕاستی مۆدێلەکە
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=300,
-                temperature=0.7
-            )
+            model="gemini-1.5-flash", 
+            contents=prompt
         )
         
         if response and response.text:
-            # پاککردنەوەی دەقەکە لە هەر هێمایەکی مارکداون کە تێلیگرام تێک دەدات
-            return response.text.replace("*", "").replace("_", "").replace("`", "")
-        else:
-            return "🤖 Gemini وەڵامێکی بەردەستی نەبوو."
+            # لابردنی هێماکانی وەک * یان _ کە تێلیگرام تێک دەدەن
+            clean_text = response.text.replace("*", "").replace("_", "").replace("`", "")
+            return clean_text
+        return "🤖 Gemini وەڵامێکی نەبوو."
 
     except Exception as e:
         print(f"Gemini Error: {e}")
-        return "⚠️ شیکردنەوە بۆ ئەم هەواڵە بەردەست نییە."
+        return "⚠️ ببورە، کێشەیەک لە شیکردنەوەدا ڕوویدا."
 
 def get_news():
-    """Get crypto news"""
+    """هێنانی هەواڵەکان"""
     url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q=crypto&language=en"
     try:
         response = requests.get(url, timeout=10).json()
@@ -57,26 +54,20 @@ def get_news():
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(
-        message,
-        "🚀 بۆتە زیرەکە چالاک بوو!\nهەواڵە نوێیەکانی کریپتۆ لێرە بڵاو دەکرێنەوە."
-    )
-
+    bot.reply_to(message, "🚀 بۆتەکە چالاک بوو! ئێستا هەواڵەکان و شیکارییەکان وەردەگریت.")
+    
     already_sent = set()
 
     while True:
         try:
             news_list = get_news()
-
             for news in news_list:
                 title = news.get("title")
                 link = news.get("link")
 
                 if title and title not in already_sent:
-                    # ئەنجامدانی شیکاری
                     analysis = analyze_with_gemini(title)
 
-                    # دروستکردنی پەیامەکە بە تێکستێکی سادە
                     final_msg = (
                         f"📰 هەواڵ: {title}\n\n"
                         f"🔗 لینکی هەواڵ: {link}\n"
@@ -84,26 +75,19 @@ def start(message):
                         f"🤖 شیکاری زیرەک:\n{analysis}"
                     )
 
-                    # ناردنی پەیامەکە بەبێ parse_mode بۆ ئەوەی تووشی Crash نەبێت
+                    # ناردنی پەیامەکە بەبێ parse_mode بۆ ئەوەی کێشەی Markdown دروست نەبێت
                     bot.send_message(message.chat.id, final_msg)
-
+                    
                     already_sent.add(title)
-
-                    # پاراستنی میمۆری (ئەگەر لیستەکە زۆر بوو پاکی بکەرەوە)
                     if len(already_sent) > 50:
                         already_sent.clear()
+                    
+                    time.sleep(5) # کەمێک وەستان بۆ ئەوەی تێلیگرام بلۆکمان نەکات
 
-                    # کەمێک وەستان لە نێوان پەیامەکان
-                    time.sleep(5)
-
-            # پشکنین هەموو ٥ خولەک جارێک
-            time.sleep(300)
-
+            time.sleep(300) # پشکنین هەموو ٥ خولەک جارێک
         except Exception as e:
             print(f"Main Loop Error: {e}")
             time.sleep(60)
 
-# دەستپێکردنی بۆتەکە
 if __name__ == "__main__":
-    print("Bot is running...")
     bot.polling(none_stop=True)
